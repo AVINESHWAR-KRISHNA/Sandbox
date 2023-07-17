@@ -1,0 +1,45 @@
+//@version=4
+strategy("SuperTrend-", overlay=true)
+
+// Parameters
+length = input(10, "SuperTrend Length")
+multiplier = input(2.0, "SuperTrend Multiplier")
+takeProfit = input(.5, "Take Profit")
+stopLoss = input(.5, "Stop Loss")
+
+// Calculate SuperTrend
+hlc3 = (high + low + close) / 3
+atr = atr(length)
+upperBand = hlc3 + (multiplier * atr)
+lowerBand = hlc3 - (multiplier * atr)
+var bool isUpTrend = na
+isUpTrend := close > upperBand[1] ? true : close < lowerBand[1] ? false : isUpTrend[1]
+
+// Track Entry and Exit Price
+var float entryPrice = na
+var float exitPrice = na
+entryPrice := strategy.position_size > 0 ? close : strategy.position_size < 0 ? close : entryPrice
+exitPrice := strategy.position_size > 0 ? close : strategy.position_size < 0 ? close : exitPrice
+
+// Set Take Profit and Stop Loss Levels
+takeProfitLevel = strategy.position_size > 0 ? entryPrice * (1 + takeProfit / 100) : strategy.position_size < 0 ? entryPrice * (1 - takeProfit / 100) : na
+stopLossLevel = strategy.position_size > 0 ? entryPrice * (1 - stopLoss / 100) : strategy.position_size < 0 ? entryPrice * (1 + stopLoss / 100) : na
+
+// Strategy Execution
+enterLong = crossover(close, upperBand)
+exitLong = crossunder(close, stopLossLevel)
+enterShort = crossunder(close, lowerBand)
+exitShort = crossover(close, stopLossLevel)
+
+strategy.entry("Long", strategy.long, when = enterLong)
+strategy.close("Long", when = exitLong or close <= stopLossLevel, comment = "Exit Long")
+strategy.exit("Long TP/SL", "Long", limit = takeProfitLevel, stop = stopLossLevel)
+
+strategy.entry("Short", strategy.short, when = enterShort)
+strategy.close("Short", when = exitShort or close >= stopLossLevel, comment = "Exit Short")
+strategy.exit("Short TP/SL", "Short", limit = takeProfitLevel, stop = stopLossLevel)
+
+// Plot SuperTrend
+plot(isUpTrend ? upperBand : lowerBand, "SuperTrend", color=isUpTrend ? color.green : color.red, linewidth=2, style=plot.style_line)
+
+
