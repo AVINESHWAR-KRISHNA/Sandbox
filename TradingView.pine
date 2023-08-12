@@ -1,0 +1,189 @@
+// This work is licensed under a Attribution-NonCommercial-ShareAlike 4.0 International (CC BY-NC-SA 4.0) https://creativecommons.org/licenses/by-nc-sa/4.0/
+// © LuxAlgo
+
+//@version=5
+indicator("Trendlines with Breaks [LuxAlgo]", "LuxAlgo - Trendlines with Breaks", overlay = true)
+//------------------------------------------------------------------------------
+//Settings
+//-----------------------------------------------------------------------------{
+length = input.int(14, 'Swing Detection Lookback')
+mult = input.float(1., 'Slope', minval = 0, step = .1)
+calcMethod = input.string('Atr', 'Slope Calculation Method', options = ['Atr','Stdev','Linreg'])
+backpaint = input(true, tooltip = 'Backpainting offset displayed elements in the past. Disable backpainting to see real time information returned by the indicator.')
+
+//Style
+upCss = input.color(color.teal, 'Up Trendline Color', group = 'Style')
+dnCss = input.color(color.red, 'Down Trendline Color', group = 'Style')
+showExt = input(true, 'Show Extended Lines')
+
+//-----------------------------------------------------------------------------}
+//Calculations
+//-----------------------------------------------------------------------------{
+var upper = 0.
+var lower = 0.
+var slope_ph = 0.
+var slope_pl = 0.
+
+var offset = backpaint ? length : 0
+
+n = bar_index
+src = close
+
+ph = ta.pivothigh(length, length)
+pl = ta.pivotlow(length, length)
+
+//Slope Calculation Method
+slope = switch calcMethod
+    'Atr'    => ta.atr(length) / length * mult
+    'Stdev'  => ta.stdev(src,length) / length * mult
+    'Linreg' => math.abs(ta.sma(src * n, length) - ta.sma(src, length) * ta.sma(n, length)) / ta.variance(n, length) / 2 * mult
+
+//Get slopes and calculate trendlines
+slope_ph := ph ? slope : slope_ph
+slope_pl := pl ? slope : slope_pl
+
+upper := ph ? ph : upper - slope_ph
+lower := pl ? pl : lower + slope_pl
+
+var upos = 0
+var dnos = 0
+upos := ph ? 0 : close > upper - slope_ph * length ? 1 : upos
+dnos := pl ? 0 : close < lower + slope_pl * length ? 1 : dnos
+
+//-----------------------------------------------------------------------------}
+//Extended Lines
+//-----------------------------------------------------------------------------{
+var uptl  = line.new(na,na,na,na, color = upCss, style = line.style_dashed, extend = extend.right)
+var dntl  = line.new(na,na,na,na, color = dnCss, style = line.style_dashed, extend = extend.right)
+
+if ph and showExt
+    uptl.set_xy1(n-offset, backpaint ? ph : upper - slope_ph * length)
+    uptl.set_xy2(n-offset+1, backpaint ? ph - slope : upper - slope_ph * (length+1))
+
+if pl and showExt
+    dntl.set_xy1(n-offset, backpaint ? pl : lower + slope_pl * length)
+    dntl.set_xy2(n-offset+1, backpaint ? pl + slope : lower + slope_pl * (length+1))
+
+//-----------------------------------------------------------------------------}
+//Plots
+//-----------------------------------------------------------------------------{
+plot(backpaint ? upper : upper - slope_ph * length, 'Upper', color = ph ? na : upCss, offset = -offset)
+plot(backpaint ? lower : lower + slope_pl * length, 'Lower', color = pl ? na : dnCss, offset = -offset)
+
+//Breakouts
+plotshape(upos > upos[1] ? low : na, "Upper Break"
+  , shape.labelup
+  , location.absolute
+  , upCss
+  , text = "B"
+  , textcolor = color.white
+  , size = size.tiny)
+
+plotshape(dnos > dnos[1] ? high : na, "Lower Break"
+  , shape.labeldown
+  , location.absolute
+  , dnCss
+  , text = "B"
+  , textcolor = color.white
+  , size = size.tiny)
+
+//-----------------------------------------------------------------------------}
+//Alerts
+//-----------------------------------------------------------------------------{
+alertcondition(upos > upos[1], 'Upward Breakout', 'Price broke the down-trendline upward')
+alertcondition(dnos > dnos[1], 'Downward Breakout', 'Price broke the up-trendline downward')
+
+//-----------------------------------------------------------------------------}
+
+
+
+// This work is licensed under a Creative Commons Attribution-NonCommercial-ShareAlike 4.0 International (CC BY-NC-SA 4.0) https://creativecommons.org/licenses/by-nc-sa/4.0/
+// © LuxAlgo
+
+//@version=4
+study("Trend Regularity Adaptive Moving Average","TRAMA [LuxAlgo]",overlay=true)
+length=input(99),src = input(close)
+//----
+ama = 0.
+hh = max(sign(change(highest(length))),0)
+ll = max(sign(change(lowest(length))*-1),0)
+tc = pow(sma(hh or ll ? 1 : 0,length),2)
+ama := nz(ama[1]+tc*(src-ama[1]),src)
+plot(ama,"Plot",#ff1100,2)
+
+
+
+
+
+
+
+//@version=4
+study("QuantNomad - Heikin-Ashi PSAR Alerts", shorttitle = "HA-PSAR[QN]", overlay = false)
+
+////////////
+// INPUTS //
+
+start      = input(0.02, title = "PSAR Start")
+increment  = input(0.02, title = "PSAR Increment")
+maximum    = input(0.2,  title = "PSAR Max")
+
+// Calculation HA Values 
+haopen  = 0.0
+haclose = (open + high + low + close) / 4
+haopen := na(haopen[1]) ? (open + close) / 2 : (haopen[1] + haclose[1]) / 2
+hahigh  = max(high, max(haopen, haclose))
+halow   = min(low,  min(haopen, haclose))
+
+// HA colors
+hacolor = haclose > haopen ? color.green : color.red
+
+psar        = 0.0 // PSAR
+af          = 0.0 // Acceleration Factor
+trend_dir   = 0   // Current direction of PSAR
+ep          = 0.0 // Extreme point
+trend_bars  = 0
+
+sar_long_to_short = trend_dir[1] == 1  and haclose <= psar[1] // PSAR switches from long to short
+sar_short_to_long = trend_dir[1] == -1 and haclose >= psar[1] // PSAR switches from short to long
+
+trend_change = na(psar[2]) or sar_long_to_short or sar_short_to_long
+
+// Calculate trend direction
+trend_dir    := na(psar[2]) and haclose[1] > haopen[1] ? 1 : 
+   na(psar[2]) and haclose[1] <= haopen[1] ? -1 : 
+   sar_long_to_short ? -1 : 
+   sar_short_to_long ?  1 : nz(trend_dir[1])
+
+trend_bars := sar_long_to_short ? -1 : 
+              sar_short_to_long ?  1 : 
+              trend_dir ==  1   ? nz(trend_bars[1]) + 1 : 
+              trend_dir == -1   ? nz(trend_bars[1]) - 1 : 
+              nz(trend_bars[1])
+
+// Calculate  Acceleration Factor
+af := trend_change ? start : 
+   (trend_dir == 1 and hahigh > ep[1]) or  
+   (trend_dir == -1 and low < ep[1]) ? 
+   min(maximum, af[1] + increment) : 
+   af[1]
+
+// Calculate extreme point
+ep := trend_change and trend_dir == 1 ? hahigh :  
+   trend_change and trend_dir == -1 ? halow : 
+   trend_dir == 1 ? max(ep[1], hahigh) : 
+   min(ep[1], halow)
+
+// Calculate PSAR
+psar := na(psar[2]) and haclose[1] > haopen[1] ? halow[1] : 
+   na(psar[2]) and haclose[1] <= haopen[1] ? hahigh[1] : 
+   trend_change ? ep[1] :    
+   trend_dir == 1 ? psar[1] + af * (ep - psar[1]) : psar[1] - af * (psar[1] - ep) 
+
+plotcandle(haopen, hahigh, halow, haclose, title = "HA", color = hacolor)
+plot(psar, style=plot.style_cross, color=trend_dir == 1 ? color.green : color.red,  linewidth = 2)
+
+plotshape(sar_short_to_long, color = color.green, style = shape.arrowup,   text = "Long",  location = location.abovebar)
+plotshape(sar_long_to_short, color = color.red,   style = shape.arrowdown, text = "Short", location = location.belowbar)
+
+alertcondition(sar_short_to_long, "HA PSAR Long",  "HA PSAR Long")
+alertcondition(sar_long_to_short, "HA PSAR Short", "HA Short Long")
